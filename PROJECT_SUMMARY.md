@@ -1,8 +1,8 @@
-# 🧩 Cuber - Project Summary for Aerohack 2024
+# 🧩 Cuber - Project Summary for Aerohack 2025
 
 ## 🎯 Project Overview
 
-**Cuber** is an AI-powered Rubik's cube solver that uses computer vision to scan cube faces and generate optimal solutions. Built for Aerohack 2024, this project demonstrates the power of combining computer vision, AI algorithms, and user experience design.
+**Cuber** is an AI-powered Rubik's cube solver that uses computer vision to scan cube faces and generate optimal solutions. Built for Aerohack 2025, this project demonstrates the power of combining computer vision, AI algorithms, and user experience design.
 
 ## 🚀 Key Achievements
 
