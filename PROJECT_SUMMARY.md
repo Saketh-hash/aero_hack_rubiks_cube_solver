@@ -121,10 +121,7 @@ python3 src/qbr.py
 
 ---
 
-**Team:** [Your Team Name]  
-**Hackathon:** Aerohack 2024  
+**Hackathon:** Aerohack 2025
 **Category:** Computer Vision & AI  
-**GitHub:** [Your Repository Link]  
-**Demo:** [Your Demo Link]
 
-*Built with ❤️ for Aerohack 2024* 
+*Built with ❤️ for Aerohack 2025* 
