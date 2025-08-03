@@ -6,7 +6,7 @@ import cv2
 from colordetection import color_detector
 from config import config
 from helpers import get_next_locale
-import i18n
+# import i18n  # Removed i18n dependency
 from PIL import ImageFont, ImageDraw, Image
 import numpy as np
 from constants import (
@@ -55,6 +55,11 @@ class Webcam:
         self.calibrated_colors = {}
         self.current_color_to_calibrate_index = 0
         self.done_calibrating = False
+        
+        # Recording functionality
+        self.recording = False
+        self.video_writer = None
+        self.recording_start_time = None
 
     def draw_stickers(self, stickers, offset_x, offset_y):
         """Draws the given stickers onto the given frame."""
@@ -213,7 +218,15 @@ class Webcam:
                     color_count[key] = 1
                 else:
                     color_count[key] = color_count[key] + 1
+        
+        # Debug information
+        print(f"Debug: Scanned {len(self.result_state.keys())}/6 sides")
+        print(f"Debug: Color distribution: {color_count}")
+        
         invalid_colors = [k for k, v in color_count.items() if v != 9]
+        if invalid_colors:
+            print(f"Debug: Invalid colors (not appearing 9 times): {invalid_colors}")
+        
         return len(invalid_colors) == 0
 
     def draw_contours(self, contours):
@@ -247,8 +260,19 @@ class Webcam:
                 break
 
             roi = self.frame[y+7:y+h-7, x+14:x+w-14]
+            
+            # Skip if ROI is too small
+            if roi.shape[0] < 5 or roi.shape[1] < 5:
+                continue
+                
             avg_bgr = color_detector.get_dominant_color(roi)
             closest_color = color_detector.get_closest_color(avg_bgr)['color_bgr']
+            
+            # Add some tolerance for lighting variations
+            if closest_color is None:
+                # If color detection fails, use a placeholder
+                closest_color = COLOR_PLACEHOLDER
+                
             self.preview_state[index] = closest_color
             if index in self.average_sticker_colors:
                 self.average_sticker_colors[index].append(closest_color)
@@ -261,6 +285,7 @@ class Webcam:
         center_color_name = color_detector.get_closest_color(self.snapshot_state[4])['color_name']
         self.result_state[center_color_name] = self.snapshot_state
         self.draw_snapshot_stickers()
+        
 
     def get_font(self, size=TEXT_SIZE):
         """Load the truetype font with the specified text size."""
@@ -285,13 +310,27 @@ class Webcam:
         self.frame = np.array(frame)
 
     def get_text_size(self, text, size=TEXT_SIZE):
-        """Get text size based on the default freetype2 loaded font."""
-        return self.get_font(size).getsize(text)
+        """Get text size based on the default freetype font."""
+        font = self.get_font(size)
+        # PIL FreeTypeFont now uses getbbox(), not getsize()
+        bbox = font.getbbox(text)
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        return (width, height)
 
     def draw_scanned_sides(self):
         """Display how many sides are scanned by the user."""
-        text = i18n.t('scannedSides', num=len(self.result_state.keys()))
+        text = f"Scanned sides: {len(self.result_state.keys())}/6"
         self.render_text(text, (20, self.height - 20), anchor='lb')
+        
+        # Show which faces still need to be scanned
+        all_faces = ['white', 'red', 'green', 'yellow', 'orange', 'blue']
+        scanned_faces = list(self.result_state.keys())
+        missing_faces = [face for face in all_faces if face not in scanned_faces]
+        
+        if missing_faces:
+            missing_text = f"Still need: {', '.join(missing_faces)}"
+            self.render_text(missing_text, (20, self.height - 40), anchor='lb')
 
     def draw_current_color_to_calibrate(self):
         """Display the current side's color that needs to be calibrated."""
@@ -299,8 +338,8 @@ class Webcam:
         font_size = int(TEXT_SIZE * 1.25)
         if self.done_calibrating:
             messages = [
-                i18n.t('calibratedSuccessfully'),
-                i18n.t('quitCalibrateMode', keyValue=CALIBRATE_MODE_KEY),
+                'Calibrated successfully',
+                f'Press {CALIBRATE_MODE_KEY} to quit calibrate mode',
             ]
             for index, text in enumerate(messages):
                 _, textsize_height = self.get_text_size(text, font_size)
@@ -308,7 +347,7 @@ class Webcam:
                 self.render_text(text, (int(self.width / 2), y), size=font_size, anchor='mt')
         else:
             current_color = self.colors_to_calibrate[self.current_color_to_calibrate_index]
-            text = i18n.t('currentCalibratingSide.{}'.format(current_color))
+            text = f'Calibrate the {current_color} side'
             self.render_text(text, (int(self.width / 2), offset_y), size=font_size, anchor='mt')
 
     def draw_calibrated_colors(self):
@@ -337,7 +376,7 @@ class Webcam:
                 tuple([int(c) for c in color_bgr]),
                 -1
             )
-            self.render_text(i18n.t(color_name), (20, y1 + STICKER_AREA_TILE_SIZE / 2 - 3), anchor='lm')
+            self.render_text(color_name, (20, y1 + STICKER_AREA_TILE_SIZE / 2 - 3), anchor='lm')
 
     def reset_calibrate_mode(self):
         """Reset calibrate mode variables."""
@@ -345,13 +384,41 @@ class Webcam:
         self.current_color_to_calibrate_index = 0
         self.done_calibrating = False
 
+    def start_recording(self):
+        """Start recording the webcam feed."""
+        if not self.recording:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"rubiks_cube_solve_{timestamp}.mp4"
+            
+            # Define the codec and create VideoWriter object
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            self.video_writer = cv2.VideoWriter(filename, fourcc, 20.0, (self.width, self.height))
+            self.recording = True
+            self.recording_start_time = datetime.datetime.now()
+            print(f"🎥 Recording started! Saving to: {filename}")
+            return filename
+        return None
+
+    def stop_recording(self):
+        """Stop recording and save the video."""
+        if self.recording and self.video_writer:
+            import datetime
+            self.video_writer.release()
+            self.recording = False
+            duration = datetime.datetime.now() - self.recording_start_time
+            print(f"🎥 Recording stopped! Duration: {duration}")
+            return True
+        return False
+
+    def record_frame(self):
+        """Record the current frame if recording is active."""
+        if self.recording and self.video_writer:
+            self.video_writer.write(self.frame)
+
     def draw_current_language(self):
-        text = '{}: {}'.format(
-            i18n.t('language'),
-            LOCALES[config.get_setting('locale')]
-        )
-        offset = 20
-        self.render_text(text, (self.width - offset, offset), anchor='rt')
+        # Temporarily disable language display to avoid i18n issues
+        pass
 
     def draw_2d_cube_state(self):
         """
@@ -481,11 +548,17 @@ class Webcam:
                 if key == 32:
                     self.update_snapshot_state()
 
-                # Switch to another language.
-                if key == ord(SWITCH_LANGUAGE_KEY):
-                    next_locale = get_next_locale(config.get_setting('locale'))
-                    config.set_setting('locale', next_locale)
-                    i18n.set('locale', next_locale)
+            if key == ord(SWITCH_LANGUAGE_KEY):
+                next_locale = get_next_locale(config.get_setting('locale'))
+                config.set_setting('locale', next_locale)
+                i18n.set('locale', next_locale)
+            
+            # Start/Stop recording with 'r' key
+            if key == ord('r'):
+                if not self.recording:
+                    self.start_recording()
+                else:
+                    self.stop_recording()
 
             # Toggle calibrate mode.
             if key == ord(CALIBRATE_MODE_KEY):
@@ -524,22 +597,51 @@ class Webcam:
                 self.draw_snapshot_stickers()
                 self.draw_scanned_sides()
                 self.draw_2d_cube_state()
+                self.draw_recording_indicator()
 
+            # Record the frame if recording is active
+            self.record_frame()
+            
             cv2.imshow("Qbr - Rubik's cube solver", self.frame)
 
+        # Stop recording if active
+        if self.recording:
+            self.stop_recording()
+            
         self.cam.release()
         cv2.destroyAllWindows()
 
         if len(self.result_state.keys()) != 6:
+            print(f"Debug: Only {len(self.result_state.keys())} sides scanned, need 6")
+            print(f"Debug: Scanned sides: {list(self.result_state.keys())}")
             return E_INCORRECTLY_SCANNED
 
         if not self.scanned_successfully():
+            print("Debug: Color validation failed")
             return E_INCORRECTLY_SCANNED
 
         if self.state_already_solved():
             return E_ALREADY_SOLVED
 
-        return self.get_result_notation()
+        # Get the solution notation
+        solution = self.get_result_notation()
+        
+        # Quit camera and return solution for console display
+        print("\n🎯 All faces scanned successfully!")
+        print("Camera closed. Solution will be displayed in console.")
+        
+        return solution
+
+
+
+    def draw_recording_indicator(self):
+        """Display recording status."""
+        if self.recording:
+            # Draw a red recording indicator
+            cv2.circle(self.frame, (self.width - 30, 30), 10, (0, 0, 255), -1)
+            self.render_text("REC", (self.width - 30, 50), color=(0, 0, 255), size=14, anchor='mt')
+
+
 
 
 webcam = Webcam()
