@@ -172,8 +172,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-*Built with ❤️ for Aerohack 2024*
+*Built with ❤️ for Aerohack 2025*
 
-**Team:** [Your Team Name]  
-**GitHub:** [Your Repository Link]  
-**Demo:** [Your Demo Link]
