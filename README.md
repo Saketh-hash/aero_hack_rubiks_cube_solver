@@ -15,7 +15,7 @@ An intelligent computer vision system that scans Rubik's cubes and generates opt
 
 ### Prerequisites
 
-- Python 3.13+
+- Python 3.13
 - Webcam
 - Standard 3x3 Rubik's cube
 
@@ -168,7 +168,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - **Kociemba** - For the optimal solving algorithm
 - **OpenCV** - For computer vision capabilities
-- **Aerohack 2024** - For the hackathon platform
+- **Aerohack 2025** - For the hackathon platform
 
 ---
 
